@@ -212,6 +212,172 @@ class LocalGuide:
         
         return f"{base_url}?{param_string}"
     
+    def analyze_user_preferences(self, conversation_history: List[Dict]) -> Dict:
+        """Analyze chat history to extract user preferences"""
+        if not self.openai_client or len(conversation_history) < 3:
+            return {}
+        
+        # Extract user messages only
+        user_messages = [msg['content'] for msg in conversation_history if msg['role'] == 'user']
+        chat_context = " | ".join(user_messages[-10:])  # Last 10 user messages
+        
+        analysis_prompt = f"""
+        Analyze these user messages from a local guide conversation and extract preferences:
+        
+        Messages: {chat_context}
+        
+        Extract and return ONLY a JSON object with these keys:
+        {{
+            "food_preferences": ["cuisine1", "cuisine2"],
+            "price_range": "budget/mid-range/upscale",
+            "activity_types": ["activity1", "activity2"],
+            "atmosphere_preferences": ["casual", "romantic", "family-friendly"],
+            "dietary_restrictions": ["vegetarian", "vegan", "gluten-free"],
+            "time_preferences": ["morning", "afternoon", "evening"],
+            "group_size": "solo/couple/family/group",
+            "interests": ["interest1", "interest2"]
+        }}
+        
+        If no clear preferences, use empty arrays or "unknown" for strings.
+        """
+        
+        try:
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": analysis_prompt}],
+                max_tokens=300,
+                temperature=0.3
+            )
+            
+            # Parse JSON response
+            preferences = json.loads(response.choices[0].message.content.strip())
+            return preferences
+        except Exception as e:
+            st.error(f"Preference analysis error: {str(e)}")
+            return {}
+
+    def generate_personalized_recommendations(self, location: str, conversation_history: List[Dict], recommendation_type: str = "general") -> str:
+        """Generate AI-powered personalized recommendations based on chat history"""
+        if not self.openai_client:
+            return "Sorry, I need an OpenAI API key to generate personalized recommendations."
+        
+        # Analyze user preferences
+        preferences = self.analyze_user_preferences(conversation_history)
+        
+        # Get diverse places data for recommendations
+        recommendation_queries = {
+            "general": ["restaurant", "cafe", "attraction", "shopping"],
+            "food": ["restaurant", "cafe", "bakery", "bar"],
+            "activities": ["museum", "park", "entertainment", "shopping"],
+            "nightlife": ["bar", "club", "restaurant", "entertainment"]
+        }
+        
+        queries = recommendation_queries.get(recommendation_type, recommendation_queries["general"])
+        all_places = []
+        
+        for query in queries:
+            places = self.get_nearby_places(location, query, radius=2000)
+            all_places.extend(places[:3])  # Top 3 from each category
+        
+        # Create personalized recommendation prompt
+        places_context = ""
+        if all_places:
+            places_context = "\n\nAvailable places to recommend from:\n"
+            for i, place in enumerate(all_places, 1):
+                places_context += f"{i}. {place['name']} - {place.get('vicinity', '')}\n"
+                places_context += f"   Rating: {place.get('rating', 'N/A')}, Price: {'💰' * (place.get('price_level', 1) if place.get('price_level', 1) != 'N/A' else 1)}\n"
+                places_context += f"   Types: {', '.join(place.get('types', [])[:3])}\n"
+        
+        # Extract recent conversation context
+        recent_messages = conversation_history[-8:] if len(conversation_history) > 8 else conversation_history
+        conversation_context = ""
+        for msg in recent_messages:
+            role = "User" if msg['role'] == 'user' else "Guide"
+            conversation_context += f"{role}: {msg['content'][:100]}...\n"
+        
+        recommendation_prompt = f"""
+        You are a local guide creating PERSONALIZED recommendations for {location}.
+        
+        RECENT CONVERSATION CONTEXT:
+        {conversation_context}
+        
+        USER PREFERENCES DETECTED:
+        {json.dumps(preferences, indent=2) if preferences else "No specific preferences detected yet"}
+        
+        {places_context}
+        
+        Create 5-8 personalized recommendations that:
+        1. Match the user's demonstrated preferences from our conversation
+        2. Include a mix of categories (food, activities, experiences)
+        3. Reference specific places from the available options when relevant
+        4. Explain WHY each recommendation fits their preferences
+        5. Include practical details (timing, price range, tips)
+        6. Suggest a logical order or grouping for visiting
+        
+        Format as a friendly, personalized guide response that feels like it's based on getting to know them through our conversation.
+        
+        Focus on recommendations for: {recommendation_type}
+        """
+        
+        try:
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": recommendation_prompt}],
+                max_tokens=800,
+                temperature=0.7
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            return f"Sorry, I couldn't generate recommendations: {str(e)}"
+
+    def create_recommendation_itinerary(self, location: str, conversation_history: List[Dict], time_period: str = "half_day") -> str:
+        """Generate a time-based itinerary based on user preferences"""
+        if not self.openai_client:
+            return "API key required for itinerary generation."
+        
+        preferences = self.analyze_user_preferences(conversation_history)
+        
+        # Get places for itinerary
+        all_places = []
+        for query in ["restaurant", "cafe", "attraction", "shopping", "park"]:
+            places = self.get_nearby_places(location, query, radius=1500)
+            all_places.extend(places[:2])
+        
+        itinerary_prompt = f"""
+        Create a {time_period} itinerary for {location} based on this user's preferences:
+        
+        User Preferences: {json.dumps(preferences, indent=2) if preferences else "General preferences"}
+        
+        Available Places:
+        {chr(10).join([f"- {p['name']} ({p.get('vicinity', '')}) - Rating: {p.get('rating', 'N/A')}" for p in all_places[:12]])}
+        
+        Create a logical, time-based itinerary that:
+        1. Groups nearby locations efficiently
+        2. Considers meal times and opening hours
+        3. Balances different types of activities
+        4. Includes travel time estimates
+        5. Provides specific timing suggestions
+        6. Matches their demonstrated preferences
+        
+        Format: 
+        **Morning (9:00 AM - 12:00 PM)**
+        - Activity with specific time and reasoning
+        
+        **Afternoon (12:00 PM - 5:00 PM)** 
+        - etc.
+        """
+        
+        try:
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": itinerary_prompt}],
+                max_tokens=700,
+                temperature=0.6
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            return f"Itinerary generation error: {str(e)}"
+    
     def create_local_guide_prompt(self, user_query: str, location: str, places_data: List[Dict]) -> str:
         """Create a prompt that makes the AI act like a focused local guide"""
         
@@ -325,6 +491,43 @@ Remember: You are ONLY a local guide. Politely decline any non-travel related qu
         
         return query  # Return original query if no specific keywords found
 
+def add_recommendations_sidebar(guide):
+    """Add recommendation features to sidebar"""
+    st.sidebar.markdown("---")
+    st.sidebar.header("🤖 AI Recommendations")
+    
+    if len(st.session_state.messages) > 4:  # Only show if there's chat history
+        st.sidebar.markdown("*Based on our conversation*")
+        
+        col1, col2 = st.sidebar.columns(2)
+        
+        with col1:
+            if st.button("🍽️ Food & Drinks", key="rec_food"):
+                st.session_state.generate_recommendations = "food"
+            
+            if st.button("🎯 Activities", key="rec_activities"):
+                st.session_state.generate_recommendations = "activities"
+        
+        with col2:
+            if st.button("🌟 Surprise Me!", key="rec_general"):
+                st.session_state.generate_recommendations = "general"
+            
+            if st.button("📅 Make Itinerary", key="rec_itinerary"):
+                st.session_state.generate_itinerary = True
+        
+        # Preference display
+        if st.sidebar.button("🔍 Show My Preferences", key="show_prefs"):
+            with st.sidebar.expander("Your Detected Preferences"):
+                preferences = guide.analyze_user_preferences(st.session_state.messages)
+                if preferences:
+                    for key, value in preferences.items():
+                        if value and value != "unknown" and value != []:
+                            st.write(f"**{key.replace('_', ' ').title()}:** {value}")
+                else:
+                    st.write("Keep chatting to help me learn your preferences!")
+    else:
+        st.sidebar.info("💡 Chat with me first, then I'll generate personalized recommendations!")
+
 def main():
     st.title("🗺️ AI Local Guide")
     st.markdown("*Ask me about local spots, restaurants, attractions, and travel tips for any city worldwide!*")
@@ -332,6 +535,27 @@ def main():
     # Sidebar for configuration
     with st.sidebar:
         st.header("🔑 API Configuration")
+        
+        # API Key inputs
+        openai_key = st.text_input(
+            "OpenAI API Key",
+            type="password",
+            help="Get your key from platform.openai.com",
+            placeholder="sk-..."
+        )
+        
+        gmaps_key = st.text_input(
+            "Google Maps API Key", 
+            type="password",
+            help="Get your key from console.cloud.google.com",
+            placeholder="AIza..."
+        )
+        
+        # Initialize the guide with API keys
+        guide = LocalGuide()
+        guide.setup_apis(openai_key, gmaps_key)
+        
+        st.markdown("---")
         
         # Location input
         location = st.text_input(
@@ -368,30 +592,9 @@ def main():
             if st.button(suggestion, key=f"suggest_{suggestion[:15]}"):
                 st.session_state.suggested_query = suggestion
         
-        st.markdown("---")
-        st.caption("🛡️ This guide only answers travel and location questions for your safety and privacy.")
-
-    # API Key inputs
-        openai_key = st.text_input(
-            "OpenAI API Key",
-            type="password",
-            help="Get your key from platform.openai.com",
-            placeholder="sk-..."
-        )
-        
-        gmaps_key = st.text_input(
-            "Google Maps API Key", 
-            type="password",
-            help="Get your key from console.cloud.google.com",
-            placeholder="AIza..."
-        )
-        
-     # Initialize the guide with API keys
-        guide = LocalGuide()
-        guide.setup_apis(openai_key, gmaps_key)
-        
-        st.markdown("---")
-        
+        # Add AI Recommendations sidebar
+        add_recommendations_sidebar(guide)
+    
     # Store location in session state
     if location:
         st.session_state['location'] = location
@@ -415,6 +618,48 @@ def main():
     else:
         # Chat input
         query = st.chat_input("Ask me about local places, restaurants, attractions, or travel tips!")
+    
+    # Handle recommendation generation
+    if "generate_recommendations" in st.session_state:
+        rec_type = st.session_state.generate_recommendations
+        del st.session_state.generate_recommendations
+        
+        with st.chat_message("assistant"):
+            with st.spinner(f"Generating personalized {rec_type} recommendations..."):
+                current_location = st.session_state.get('location', 'Current location')
+                recommendations = guide.generate_personalized_recommendations(
+                    current_location, 
+                    st.session_state.messages, 
+                    rec_type
+                )
+                st.markdown(f"## 🤖 Personalized {rec_type.title()} Recommendations\n\n{recommendations}")
+        
+        # Add to chat history
+        st.session_state.messages.append({
+            "role": "assistant", 
+            "content": f"## 🤖 Personalized {rec_type.title()} Recommendations\n\n{recommendations}"
+        })
+        st.rerun()
+
+    # Handle itinerary generation
+    if "generate_itinerary" in st.session_state:
+        del st.session_state.generate_itinerary
+        
+        with st.chat_message("assistant"):
+            with st.spinner("Creating your personalized itinerary..."):
+                current_location = st.session_state.get('location', 'Current location')
+                itinerary = guide.create_recommendation_itinerary(
+                    current_location, 
+                    st.session_state.messages
+                )
+                st.markdown(f"## 📅 Your Personalized Itinerary\n\n{itinerary}")
+        
+        # Add to chat history
+        st.session_state.messages.append({
+            "role": "assistant", 
+            "content": f"## 📅 Your Personalized Itinerary\n\n{itinerary}"
+        })
+        st.rerun()
     
     if query:
         # Add user message to chat history
