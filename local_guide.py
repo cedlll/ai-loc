@@ -712,6 +712,10 @@ def add_recommendations_sidebar(guide, ad_manager):
                     st.write("Keep chatting to help me learn your preferences!")
     else:
         st.sidebar.info("💡 Chat with me first, then I'll generate personalized recommendations!")
+    
+    # Add sidebar ad
+    if len(st.session_state.messages) > 2:  # Show ads after some conversation
+        ad_manager.render_sidebar_ad()
 
 def main():
     st.title("🗺️ AI Local Guide")
