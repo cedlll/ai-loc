@@ -19,24 +19,34 @@ class LocalGuide:
     def __init__(self):
         self.openai_client = None
         self.gmaps_client = None
-        self.setup_apis()
     
-    def setup_apis(self):
+    def setup_apis(self, openai_key=None, gmaps_key=None):
         """Initialize API clients"""
         try:
-            # OpenAI setup
-            if "openai_api_key" in st.secrets:
-                openai.api_key = st.secrets["openai_api_key"]
-                self.openai_client = openai
-            elif "OPENAI_API_KEY" in os.environ:
-                openai.api_key = os.environ["OPENAI_API_KEY"]
+            # OpenAI setup - try multiple sources
+            api_key = None
+            if openai_key:  # From user input
+                api_key = openai_key
+            elif "openai_api_key" in st.secrets:  # From secrets
+                api_key = st.secrets["openai_api_key"]
+            elif "OPENAI_API_KEY" in os.environ:  # From environment
+                api_key = os.environ["OPENAI_API_KEY"]
+            
+            if api_key:
+                openai.api_key = api_key
                 self.openai_client = openai
             
-            # Google Maps setup
-            if "google_maps_api_key" in st.secrets:
-                self.gmaps_client = googlemaps.Client(key=st.secrets["google_maps_api_key"])
-            elif "GOOGLE_MAPS_API_KEY" in os.environ:
-                self.gmaps_client = googlemaps.Client(key=os.environ["GOOGLE_MAPS_API_KEY"])
+            # Google Maps setup - try multiple sources
+            maps_key = None
+            if gmaps_key:  # From user input
+                maps_key = gmaps_key
+            elif "google_maps_api_key" in st.secrets:  # From secrets
+                maps_key = st.secrets["google_maps_api_key"]
+            elif "GOOGLE_MAPS_API_KEY" in os.environ:  # From environment
+                maps_key = os.environ["GOOGLE_MAPS_API_KEY"]
+            
+            if maps_key:
+                self.gmaps_client = googlemaps.Client(key=maps_key)
                 
         except Exception as e:
             st.error(f"API setup error: {str(e)}")
@@ -132,7 +142,7 @@ Keep your response concise but informative (2-3 paragraphs max). Act like you've
     def chat_with_guide(self, user_query: str, location: str, conversation_history: List[Dict]) -> str:
         """Generate AI response using OpenAI with local context"""
         if not self.openai_client:
-            return "Sorry, I need an OpenAI API key to help you. Please add it to your secrets or environment variables."
+            return "Sorry, I need an OpenAI API key to help you. Please add it in the sidebar."
         
         # Extract keywords for place search
         search_keywords = self.extract_search_keywords(user_query)
@@ -193,22 +203,28 @@ def main():
     st.title("🗺️ Your Personal Local Guide")
     st.markdown("*Ask me anything about your area - I'm like having a knowledgeable local friend!*")
     
-    # Initialize the guide
-    guide = LocalGuide()
-    
     # Sidebar for configuration
     with st.sidebar:
-        st.header("📍 Location Settings")
+        st.header("🔑 API Configuration")
         
-        # Location input
-        location = st.text_input(
-            "Your Location", 
-            value=st.session_state.get('location', 'New York, NY'),
-            help="Enter your city, neighborhood, or address"
+        # API Key inputs
+        openai_key = st.text_input(
+            "OpenAI API Key",
+            type="password",
+            help="Get your key from platform.openai.com",
+            placeholder="sk-..."
         )
         
-        if st.button("📍 Use My Current Location", help="This will prompt for location access"):
-            st.info("Location detection would require additional browser permissions and setup.")
+        gmaps_key = st.text_input(
+            "Google Maps API Key", 
+            type="password",
+            help="Get your key from console.cloud.google.com",
+            placeholder="AIza..."
+        )
+        
+        # Initialize the guide with API keys
+        guide = LocalGuide()
+        guide.setup_apis(openai_key, gmaps_key)
         
         st.markdown("---")
         
@@ -221,8 +237,22 @@ def main():
         st.write(f"Google Maps: {gmaps_status}")
         
         if not guide.openai_client or not guide.gmaps_client:
-            st.warning("Configure API keys in secrets.toml or environment variables")
+            st.info("👆 Enter your API keys above to get started!")
             
+        st.markdown("---")
+        
+        st.header("📍 Location Settings")
+        
+        # Location input
+        location = st.text_input(
+            "Your Location", 
+            value=st.session_state.get('location', 'New York, NY'),
+            help="Enter your city, neighborhood, or address"
+        )
+        
+        if st.button("📍 Use My Current Location", help="This will prompt for location access"):
+            st.info("Location detection would require additional browser permissions and setup.")
+        
         st.markdown("---")
         
         # Quick suggestions
