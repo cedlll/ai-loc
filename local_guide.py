@@ -5,6 +5,7 @@ import requests
 from datetime import datetime
 import json
 import os
+import random
 from typing import List, Dict, Optional
 import urllib.parse
 
@@ -491,7 +492,191 @@ Remember: You are ONLY a local guide. Politely decline any non-travel related qu
         
         return query  # Return original query if no specific keywords found
 
-def add_recommendations_sidebar(guide):
+class AdManager:
+    """Manages contextual advertisements for the local guide"""
+    
+    def __init__(self):
+        self.ad_counter = 0
+        self.sample_ads = {
+            "food": [
+                {
+                    "title": "🍕 Tony's Authentic Pizza",
+                    "description": "Fresh ingredients, wood-fired oven. Order online for 20% off!",
+                    "url": "https://example.com/tonys-pizza",
+                    "cta": "Order Now",
+                    "type": "restaurant"
+                },
+                {
+                    "title": "🥘 DoorDash - Food Delivery",
+                    "description": "Get your favorite local restaurants delivered. New users get $10 off!",
+                    "url": "https://doordash.com",
+                    "cta": "Get $10 Off",
+                    "type": "service"
+                },
+                {
+                    "title": "☕ Blue Bottle Coffee",
+                    "description": "Premium coffee beans delivered to your door. Free shipping on orders $40+",
+                    "url": "https://bluebottlecoffee.com",
+                    "cta": "Shop Coffee",
+                    "type": "product"
+                }
+            ],
+            "activities": [
+                {
+                    "title": "🎟️ GetYourGuide Tours",
+                    "description": "Skip-the-line tickets & unique experiences. Book now, cancel free!",
+                    "url": "https://getyourguide.com",
+                    "cta": "Book Tours",
+                    "type": "service"
+                },
+                {
+                    "title": "🏛️ Museum Pass",
+                    "description": "Access 60+ attractions with one pass. Save up to 50% on admissions!",
+                    "url": "https://example.com/museum-pass",
+                    "cta": "Get Pass",
+                    "type": "service"
+                },
+                {
+                    "title": "🚴 Bike Rental Co.",
+                    "description": "Explore the city on two wheels! Electric bikes available. Book online.",
+                    "url": "https://example.com/bike-rental",
+                    "cta": "Rent Bike",
+                    "type": "service"
+                }
+            ],
+            "accommodation": [
+                {
+                    "title": "🏨 Booking.com",
+                    "description": "Find the perfect stay. Free cancellation on most hotels!",
+                    "url": "https://booking.com",
+                    "cta": "Find Hotels",
+                    "type": "service"
+                },
+                {
+                    "title": "🏠 Airbnb",
+                    "description": "Unique stays and experiences. Get $40 off your first trip!",
+                    "url": "https://airbnb.com",
+                    "cta": "Get $40 Off",
+                    "type": "service"
+                }
+            ],
+            "general": [
+                {
+                    "title": "🧳 Travel Gear Store",
+                    "description": "Quality luggage, backpacks & travel accessories. Free shipping over $50!",
+                    "url": "https://example.com/travel-gear",
+                    "cta": "Shop Now",
+                    "type": "product"
+                },
+                {
+                    "title": "📱 Citymapper",
+                    "description": "Navigate like a local with real-time transit info. Download the app!",
+                    "url": "https://citymapper.com",
+                    "cta": "Download App",
+                    "type": "app"
+                },
+                {
+                    "title": "💳 Travel Rewards Card",
+                    "description": "Earn 2x points on travel & dining. No foreign transaction fees!",
+                    "url": "https://example.com/travel-card",
+                    "cta": "Apply Now",
+                    "type": "financial"
+                }
+            ]
+        }
+    
+    def get_contextual_ad(self, conversation_context: str, category: str = "general") -> Optional[Dict]:
+        """Get a contextual ad based on conversation topic"""
+        
+        # Don't show ads too frequently
+        self.ad_counter += 1
+        if self.ad_counter % 4 != 0:  # Show ad every 4th interaction
+            return None
+        
+        # Determine ad category from context
+        context_lower = conversation_context.lower()
+        
+        if any(word in context_lower for word in ['restaurant', 'food', 'eat', 'coffee', 'dinner', 'lunch']):
+            category = "food"
+        elif any(word in context_lower for word in ['hotel', 'stay', 'accommodation', 'sleep']):
+            category = "accommodation"
+        elif any(word in context_lower for word in ['activity', 'museum', 'tour', 'attraction', 'visit']):
+            category = "activities"
+        else:
+            category = "general"
+        
+        # Get random ad from category
+        ads = self.sample_ads.get(category, self.sample_ads["general"])
+        return random.choice(ads) if ads else None
+    
+    def render_ad(self, ad: Dict) -> None:
+        """Render an ad in the UI"""
+        if not ad:
+            return
+        
+        with st.container():
+            st.markdown("---")
+            
+            # Create a subtle ad container
+            with st.container():
+                col1, col2, col3 = st.columns([1, 6, 1])
+                
+                with col2:
+                    # Ad header with sponsor label
+                    st.markdown(
+                        f'<div style="background: linear-gradient(90deg, #f0f2f6, #ffffff); '
+                        f'padding: 12px; border-radius: 8px; border-left: 3px solid #ff4b4b; '
+                        f'margin: 8px 0;">'
+                        f'<div style="display: flex; justify-content: space-between; align-items: center;">'
+                        f'<div>'
+                        f'<div style="font-size: 12px; color: #666; margin-bottom: 4px;">Sponsored</div>'
+                        f'<div style="font-weight: bold; color: #262730; margin-bottom: 4px;">{ad["title"]}</div>'
+                        f'<div style="color: #555; font-size: 14px; margin-bottom: 8px;">{ad["description"]}</div>'
+                        f'</div>'
+                        f'<div>'
+                        f'<a href="{ad["url"]}" target="_blank" rel="noopener noreferrer" '
+                        f'style="background: #ff4b4b; color: white; padding: 8px 16px; '
+                        f'border-radius: 4px; text-decoration: none; font-size: 12px; '
+                        f'font-weight: bold; display: inline-block;">{ad["cta"]}</a>'
+                        f'</div>'
+                        f'</div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+    
+    def get_sidebar_ad(self) -> Optional[Dict]:
+        """Get an ad for the sidebar"""
+        # Rotate through different categories for sidebar
+        categories = ["general", "food", "activities", "accommodation"]
+        category = categories[self.ad_counter % len(categories)]
+        
+        ads = self.sample_ads.get(category, self.sample_ads["general"])
+        return random.choice(ads) if ads else None
+    
+    def render_sidebar_ad(self) -> None:
+        """Render a compact ad in the sidebar"""
+        ad = self.get_sidebar_ad()
+        if not ad:
+            return
+        
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("**Sponsored**")
+        
+        # Compact sidebar ad
+        st.sidebar.markdown(
+            f'<div style="background: #f8f9fa; padding: 10px; border-radius: 6px; '
+            f'border: 1px solid #e9ecef; text-align: center;">'
+            f'<div style="font-weight: bold; font-size: 13px; margin-bottom: 6px;">{ad["title"]}</div>'
+            f'<div style="font-size: 11px; color: #666; margin-bottom: 8px;">{ad["description"]}</div>'
+            f'<a href="{ad["url"]}" target="_blank" rel="noopener noreferrer" '
+            f'style="background: #ff4b4b; color: white; padding: 6px 12px; '
+            f'border-radius: 3px; text-decoration: none; font-size: 11px; '
+            f'font-weight: bold; display: inline-block;">{ad["cta"]}</a>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+def add_recommendations_sidebar(guide, ad_manager):
     """Add recommendation features to sidebar"""
     st.sidebar.markdown("---")
     st.sidebar.header("🤖 AI Recommendations")
@@ -531,6 +716,11 @@ def add_recommendations_sidebar(guide):
 def main():
     st.title("🗺️ AI Local Guide")
     st.markdown("*Ask me about local spots, restaurants, attractions, and travel tips for any city worldwide!*")
+    
+    # Initialize ad manager
+    if 'ad_manager' not in st.session_state:
+        st.session_state.ad_manager = AdManager()
+    ad_manager = st.session_state.ad_manager
     
     # Sidebar for configuration
     with st.sidebar:
@@ -593,7 +783,7 @@ def main():
                 st.session_state.suggested_query = suggestion
         
         # Add AI Recommendations sidebar
-        add_recommendations_sidebar(guide)
+        add_recommendations_sidebar(guide, ad_manager)
     
     # Store location in session state
     if location:
@@ -633,6 +823,11 @@ def main():
                     rec_type
                 )
                 st.markdown(f"## 🤖 Personalized {rec_type.title()} Recommendations\n\n{recommendations}")
+                
+                # Show contextual ad after recommendations
+                contextual_ad = ad_manager.get_contextual_ad(recommendations, rec_type)
+                if contextual_ad:
+                    ad_manager.render_ad(contextual_ad)
         
         # Add to chat history
         st.session_state.messages.append({
@@ -653,6 +848,11 @@ def main():
                     st.session_state.messages
                 )
                 st.markdown(f"## 📅 Your Personalized Itinerary\n\n{itinerary}")
+                
+                # Show contextual ad after itinerary
+                contextual_ad = ad_manager.get_contextual_ad(itinerary, "activities")
+                if contextual_ad:
+                    ad_manager.render_ad(contextual_ad)
         
         # Add to chat history
         st.session_state.messages.append({
@@ -702,10 +902,21 @@ def main():
                                 st.markdown(f"[📍 View on Maps]({place['maps_link']})")
                                 if place.get('directions_link'):
                                     st.markdown(f"[🚶 Get Directions]({place['directions_link']})")
+                    
+                    # Show contextual ad after place recommendations
+                    contextual_ad = ad_manager.get_contextual_ad(query + " " + response)
+                    if contextual_ad:
+                        ad_manager.render_ad(contextual_ad)
+                        
                 else:
                     # Regular response without places data
                     response = guide.chat_with_guide(query, current_location, st.session_state.messages[:-1])
                     st.markdown(response)
+                    
+                    # Show contextual ad after regular responses (less frequently)
+                    contextual_ad = ad_manager.get_contextual_ad(query + " " + response)
+                    if contextual_ad:
+                        ad_manager.render_ad(contextual_ad)
         
         # Add assistant response to chat history
         st.session_state.messages.append({"role": "assistant", "content": response})
