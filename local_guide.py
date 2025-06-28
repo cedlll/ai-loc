@@ -326,48 +326,12 @@ Remember: You are ONLY a local guide. Politely decline any non-travel related qu
         return query  # Return original query if no specific keywords found
 
 def main():
-    st.title("🗺️ Your Personal Local Guide")
+    st.title("🗺️ AI Local Guide")
     st.markdown("*Ask me about local spots, restaurants, attractions, and travel tips for any city worldwide!*")
     
     # Sidebar for configuration
     with st.sidebar:
         st.header("🔑 API Configuration")
-        
-        # API Key inputs
-        openai_key = st.text_input(
-            "OpenAI API Key",
-            type="password",
-            help="Get your key from platform.openai.com",
-            placeholder="sk-..."
-        )
-        
-        gmaps_key = st.text_input(
-            "Google Maps API Key", 
-            type="password",
-            help="Get your key from console.cloud.google.com",
-            placeholder="AIza..."
-        )
-        
-        # Initialize the guide with API keys
-        guide = LocalGuide()
-        guide.setup_apis(openai_key, gmaps_key)
-        
-        st.markdown("---")
-        
-        # API Status
-        st.header("🔧 API Status")
-        openai_status = "✅ Connected" if guide.openai_client else "❌ Not configured"
-        gmaps_status = "✅ Connected" if guide.gmaps_client else "❌ Not configured"
-        
-        st.write(f"OpenAI: {openai_status}")
-        st.write(f"Google Maps: {gmaps_status}")
-        
-        if not guide.openai_client or not guide.gmaps_client:
-            st.info("👆 Enter your API keys above to get started!")
-            
-        st.markdown("---")
-        
-        st.header("📍 Location Settings")
         
         # Location input
         location = st.text_input(
@@ -376,11 +340,6 @@ def main():
             help="Enter any city, neighborhood, or address worldwide",
             placeholder="e.g., Paris, France or Tokyo, Japan"
         )
-        
-        # Live location button
-        st.markdown("**Get Current Location:**")
-        location_html = guide.get_user_location_js()
-        st.components.v1.html(location_html, height=100)
         
         # Check for geolocation data in session state
         if 'user_lat' in st.session_state and 'user_lng' in st.session_state:
@@ -411,7 +370,28 @@ def main():
         
         st.markdown("---")
         st.caption("🛡️ This guide only answers travel and location questions for your safety and privacy.")
-    
+
+    # API Key inputs
+        openai_key = st.text_input(
+            "OpenAI API Key",
+            type="password",
+            help="Get your key from platform.openai.com",
+            placeholder="sk-..."
+        )
+        
+        gmaps_key = st.text_input(
+            "Google Maps API Key", 
+            type="password",
+            help="Get your key from console.cloud.google.com",
+            placeholder="AIza..."
+        )
+        
+     # Initialize the guide with API keys
+        guide = LocalGuide()
+        guide.setup_apis(openai_key, gmaps_key)
+        
+        st.markdown("---")
+        
     # Store location in session state
     if location:
         st.session_state['location'] = location
