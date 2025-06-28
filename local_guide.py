@@ -369,7 +369,6 @@ def main():
                 st.session_state.suggested_query = suggestion
         
         st.markdown("---")
-        st.caption("🛡️ This guide only answers travel and location questions for your safety and privacy.")
 
     # API Key inputs
         openai_key = st.text_input(
