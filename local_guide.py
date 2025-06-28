@@ -108,7 +108,7 @@ class LocalGuide:
             return f"{lat}, {lng}"
     
     def get_nearby_places(self, location: str, query: str, radius: int = 1000) -> List[Dict]:
-        """Search for nearby places using Google Places API with reviews"""
+        """Search for nearby places using Google Places API"""
         if not self.gmaps_client:
             return []
         
@@ -128,13 +128,12 @@ class LocalGuide:
                 open_now=True
             )
             
-            # Format results and get detailed info including reviews
+            # Format results
             places = []
-            for place in places_result.get('results', [])[:6]:  # Reduced to 6 to account for additional API calls
+            for place in places_result.get('results', [])[:8]:  # Limit to 8 results for better display
                 place_details = {
                     'name': place.get('name', ''),
                     'rating': place.get('rating', 'N/A'),
-                    'user_ratings_total': place.get('user_ratings_total', 0),
                     'price_level': place.get('price_level', 'N/A'),
                     'types': place.get('types', []),
                     'vicinity': place.get('vicinity', ''),
@@ -143,11 +142,6 @@ class LocalGuide:
                     'geometry': place.get('geometry', {}),
                     'photos': place.get('photos', [])
                 }
-                
-                # Get detailed place information including reviews
-                if place_details['place_id']:
-                    detailed_info = self.get_place_details(place_details['place_id'])
-                    place_details.update(detailed_info)
                 
                 # Generate Google Maps links
                 place_details['maps_link'] = self.generate_maps_link(place_details)
@@ -160,43 +154,6 @@ class LocalGuide:
         except Exception as e:
             st.error(f"Places search error: {str(e)}")
             return []
-    
-    def get_place_details(self, place_id: str) -> Dict:
-        """Get detailed information about a specific place including reviews"""
-        if not self.gmaps_client:
-            return {}
-        
-        try:
-            details = self.gmaps_client.place(
-                place_id=place_id,
-                fields=[
-                    'name', 'rating', 'user_ratings_total', 'formatted_phone_number', 
-                    'website', 'opening_hours', 'price_level', 'reviews', 
-                    'formatted_address', 'photos', 'types', 'vicinity'
-                ]
-            )
-            
-            place_data = details.get('result', {})
-            
-            # Format reviews for better display
-            if 'reviews' in place_data:
-                formatted_reviews = []
-                for review in place_data['reviews'][:3]:  # Get top 3 reviews
-                    formatted_review = {
-                        'author_name': review.get('author_name', 'Anonymous'),
-                        'rating': review.get('rating', 0),
-                        'text': review.get('text', ''),
-                        'time_description': review.get('relative_time_description', ''),
-                        'profile_photo_url': review.get('profile_photo_url', '')
-                    }
-                    formatted_reviews.append(formatted_review)
-                place_data['formatted_reviews'] = formatted_reviews
-            
-            return place_data
-            
-        except Exception as e:
-            st.error(f"Error getting place details: {str(e)}")
-            return {}
     
     def generate_maps_link(self, place: Dict) -> str:
         """Generate Google Maps link for a place"""
@@ -256,7 +213,7 @@ class LocalGuide:
         return f"{base_url}?{param_string}"
     
     def create_local_guide_prompt(self, user_query: str, location: str, places_data: List[Dict]) -> str:
-        """Create a prompt that makes the AI act like a focused local guide with review insights"""
+        """Create a prompt that makes the AI act like a focused local guide"""
         
         places_info = ""
         if places_data:
@@ -264,18 +221,10 @@ class LocalGuide:
             for i, place in enumerate(places_data, 1):
                 price_indicator = "💰" * (place.get('price_level', 1) if place.get('price_level', 1) != 'N/A' else 1)
                 places_info += f"{chr(64 + i)}. **{place['name']}** ({place.get('vicinity', 'Unknown location')})\n"
-                places_info += f"   - Rating: {place.get('rating', 'N/A')} ⭐ ({place.get('user_ratings_total', 0)} reviews)\n"
+                places_info += f"   - Rating: {place.get('rating', 'N/A')} ⭐\n"
                 places_info += f"   - Price: {price_indicator}\n"
                 places_info += f"   - Currently open: {'Yes' if place.get('opening_hours') else 'Unknown'}\n"
-                places_info += f"   - Maps: {place.get('maps_link', 'N/A')}\n"
-                
-                # Add review highlights
-                if place.get('formatted_reviews'):
-                    places_info += f"   - Recent Reviews:\n"
-                    for review in place['formatted_reviews'][:2]:  # Show top 2 reviews
-                        review_text = review['text'][:120] + "..." if len(review['text']) > 120 else review['text']
-                        places_info += f"     • {review['rating']}⭐ \"{review_text}\" - {review['author_name']} ({review.get('time_description', 'Recently')})\n"
-                places_info += "\n"
+                places_info += f"   - Maps: {place.get('maps_link', 'N/A')}\n\n"
         
         prompt = f"""You are a helpful LOCAL GUIDE for {location}. You ONLY help with travel, tourism, and location-based questions.
 
@@ -293,30 +242,16 @@ Location context: {location}
 
 Respond as a friendly local guide who:
 - Gives enthusiastic, practical recommendations
-- References specific reviews and what people love about each place
 - Includes walking times, price ranges, best times to visit
-- Shares insights from recent visitor experiences based on reviews
-- Mentions what reviewers particularly praised or noted
+- Shares local tips and hidden gems
+- Mentions alternatives and nearby options
 - Uses Google Maps links when available
 - Keeps responses concise (2-3 paragraphs max)
 - Stays focused ONLY on travel and local guidance
 
-When you have review data, mention what makes each place special according to actual visitors. Remember: You are ONLY a local guide. Politely decline any non-travel related questions."""
+Remember: You are ONLY a local guide. Politely decline any non-travel related questions."""
 
         return prompt
-    
-    def display_reviews_section(self, places_data: List[Dict]):
-        """Display detailed reviews section"""
-        st.markdown("---")
-        st.markdown("💬 **What People Are Saying:**")
-        
-        for i, place in enumerate(places_data):
-            if place.get('formatted_reviews'):
-                with st.expander(f"📝 Reviews for {place['name']}", expanded=False):
-                    for review in place['formatted_reviews']:
-                        st.markdown(f"**{review['author_name']}** {'⭐' * review['rating']} *({review.get('time_description', 'Recently')})*")
-                        st.markdown(f"*\"{review['text']}\"*")
-                        st.markdown("---")
     
     def chat_with_guide(self, user_query: str, location: str, conversation_history: List[Dict]) -> str:
         """Generate AI response using OpenAI with local context"""
@@ -398,42 +333,6 @@ def main():
     with st.sidebar:
         st.header("🔑 API Configuration")
         
-        # API Key inputs
-        openai_key = st.text_input(
-            "OpenAI API Key",
-            type="password",
-            help="Get your key from platform.openai.com",
-            placeholder="sk-..."
-        )
-        
-        gmaps_key = st.text_input(
-            "Google Maps API Key", 
-            type="password",
-            help="Get your key from console.cloud.google.com",
-            placeholder="AIza..."
-        )
-        
-        # Initialize the guide with API keys
-        guide = LocalGuide()
-        guide.setup_apis(openai_key, gmaps_key)
-        
-        st.markdown("---")
-        
-        # API Status
-        st.header("🔧 API Status")
-        openai_status = "✅ Connected" if guide.openai_client else "❌ Not configured"
-        gmaps_status = "✅ Connected" if guide.gmaps_client else "❌ Not configured"
-        
-        st.write(f"OpenAI: {openai_status}")
-        st.write(f"Google Maps: {gmaps_status}")
-        
-        if not guide.openai_client or not guide.gmaps_client:
-            st.info("👆 Enter your API keys above to get started!")
-            
-        st.markdown("---")
-        
-        st.header("📍 Location Settings")
-        
         # Location input
         location = st.text_input(
             "Your Location", 
@@ -441,11 +340,6 @@ def main():
             help="Enter any city, neighborhood, or address worldwide",
             placeholder="e.g., Paris, France or Tokyo, Japan"
         )
-        
-        # Live location button
-        st.markdown("**Get Current Location:**")
-        location_html = guide.get_user_location_js()
-        st.components.v1.html(location_html, height=100)
         
         # Check for geolocation data in session state
         if 'user_lat' in st.session_state and 'user_lng' in st.session_state:
@@ -476,7 +370,28 @@ def main():
         
         st.markdown("---")
         st.caption("🛡️ This guide only answers travel and location questions for your safety and privacy.")
-    
+
+    # API Key inputs
+        openai_key = st.text_input(
+            "OpenAI API Key",
+            type="password",
+            help="Get your key from platform.openai.com",
+            placeholder="sk-..."
+        )
+        
+        gmaps_key = st.text_input(
+            "Google Maps API Key", 
+            type="password",
+            help="Get your key from console.cloud.google.com",
+            placeholder="AIza..."
+        )
+        
+     # Initialize the guide with API keys
+        guide = LocalGuide()
+        guide.setup_apis(openai_key, gmaps_key)
+        
+        st.markdown("---")
+        
     # Store location in session state
     if location:
         st.session_state['location'] = location
@@ -534,23 +449,14 @@ def main():
                         # Show place details with links
                         st.markdown("🔗 **Quick Access Links:**")
                         for i, place in enumerate(places_data):
-                            col1, col2, col3 = st.columns([2, 1, 1])
+                            col1, col2 = st.columns(2)
                             with col1:
                                 st.markdown(f"**{chr(65+i)}. {place['name']}**")
-                                rating_text = f"⭐ {place.get('rating', 'N/A')}"
-                                if place.get('user_ratings_total', 0) > 0:
-                                    rating_text += f" ({place['user_ratings_total']} reviews)"
-                                price_indicator = '💰' * (place.get('price_level', 1) if place.get('price_level', 1) != 'N/A' else 1)
-                                st.markdown(f"{rating_text} | {price_indicator}")
+                                st.markdown(f"⭐ {place.get('rating', 'N/A')} | {'💰' * (place.get('price_level', 1) if place.get('price_level', 1) != 'N/A' else 1)}")
                             with col2:
                                 st.markdown(f"[📍 View on Maps]({place['maps_link']})")
-                            with col3:
                                 if place.get('directions_link'):
                                     st.markdown(f"[🚶 Get Directions]({place['directions_link']})")
-                        
-                        # Show detailed reviews section
-                        guide.display_reviews_section(places_data)
-                        
                 else:
                     # Regular response without places data
                     response = guide.chat_with_guide(query, current_location, st.session_state.messages[:-1])
