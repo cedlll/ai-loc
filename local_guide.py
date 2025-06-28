@@ -681,7 +681,11 @@ def add_recommendations_sidebar(guide, ad_manager):
     st.sidebar.markdown("---")
     st.sidebar.header("🤖 AI Recommendations")
     
-    if len(st.session_state.messages) > 4:  # Only show if there's chat history
+    # Check if messages exist in session state and have content
+    messages_exist = hasattr(st.session_state, 'messages') and st.session_state.messages
+    message_count = len(st.session_state.messages) if messages_exist else 0
+    
+    if message_count > 4:  # Only show if there's chat history
         st.sidebar.markdown("*Based on our conversation*")
         
         col1, col2 = st.sidebar.columns(2)
@@ -703,18 +707,24 @@ def add_recommendations_sidebar(guide, ad_manager):
         # Preference display
         if st.sidebar.button("🔍 Show My Preferences", key="show_prefs"):
             with st.sidebar.expander("Your Detected Preferences"):
-                preferences = guide.analyze_user_preferences(st.session_state.messages)
-                if preferences:
-                    for key, value in preferences.items():
-                        if value and value != "unknown" and value != []:
-                            st.write(f"**{key.replace('_', ' ').title()}:** {value}")
+                if messages_exist and guide.openai_client:
+                    try:
+                        preferences = guide.analyze_user_preferences(st.session_state.messages)
+                        if preferences:
+                            for key, value in preferences.items():
+                                if value and value != "unknown" and value != []:
+                                    st.write(f"**{key.replace('_', ' ').title()}:** {value}")
+                        else:
+                            st.write("Keep chatting to help me learn your preferences!")
+                    except Exception as e:
+                        st.write("Learning your preferences...")
                 else:
                     st.write("Keep chatting to help me learn your preferences!")
     else:
         st.sidebar.info("💡 Chat with me first, then I'll generate personalized recommendations!")
     
     # Add sidebar ad
-    if len(st.session_state.messages) > 2:  # Show ads after some conversation
+    if message_count > 2:  # Show ads after some conversation
         ad_manager.render_sidebar_ad()
 
 def main():
